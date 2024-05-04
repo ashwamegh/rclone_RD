@@ -17,7 +17,7 @@ A potential use-case for this is serving the /torrent directory over plex, allow
 ### Capabilities and Limitations:
 
 - Read/Write capabilities are limited to reading files and deleting them. 
-- This rclone fork will automatically sort your torrents into 3 subfolder: "shows", "movies" and "default". If a torrent couldnt be classified as a movie or a show, you can find it in the "default" folder.
+- This rclone fork will automatically sort your torrents into 4 subfolder: "shows", "movies", "music" and "default". If a torrent couldnt be classified as a movie or a show, you can find it in the "default" folder.
 - There are no server-side traffic or storage limitations.
 - This rclone fork will automatically re-activate direct links when they expire after 1 week.
 - There is a server-side connection limit, which I believe is 16 parallel connections.

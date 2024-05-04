@@ -71,9 +71,9 @@ var (
 	}
 )
 
-//Global lists of recieved content.
-//Realdebrid content is provided in pages with 100 items per page.
-//To limit api calls all pages are stored here and are only updated on changes in the total length
+// Global lists of recieved content.
+// Realdebrid content is provided in pages with 100 items per page.
+// To limit api calls all pages are stored here and are only updated on changes in the total length
 var cached []api.Item
 var torrents []api.Item
 var broken_torrents []string
@@ -111,6 +111,11 @@ func init() {
 			Advanced: true,
 			Default:  `(?i)(19|20)([0-9]{2} ?\.?)`,
 		}, {
+			Name:     "regex_music",
+			Help:     `please define the regex definition that will determine if a torrent should be classified as a music folder. Default: "(?i)^(.*?).*(mp3|wav|flac|m4a)(.*)"`,
+			Advanced: true,
+			Default:  `(?i)^(.*?).*(mp3|wav|flac|m4a)(.*)`,
+		}, {
 			Name:     config.ConfigEncoding,
 			Help:     config.ConfigEncodingHelp,
 			Advanced: true,
@@ -127,6 +132,7 @@ func init() {
 type Options struct {
 	RegexShows   string               `config:"regex_shows"`
 	RegexMovies  string               `config:"regex_movies"`
+	RegexMusic   string               `config:"regex_music"`
 	SharedFolder string               `config:"folder_mode"`
 	RootFolderID string               `config:"download_mode"`
 	APIKey       string               `config:"api_key"`
@@ -634,22 +640,26 @@ func (f *Fs) listAll(ctx context.Context, dirID string, directoriesOnly bool, fi
 			if f.opt.SharedFolder == "folders" {
 				var ShowsFolder api.Item
 				var MoviesFolder api.Item
+				var MusicFolder api.Item
 				var DefaultFolder api.Item
 				ShowsFolder.ID = "shows"
 				ShowsFolder.Name = "shows"
 				MoviesFolder.ID = "movies"
 				MoviesFolder.Name = "movies"
+				MusicFolder.ID = "music"
+				MusicFolder.Name = "music"
 				DefaultFolder.ID = "default"
 				DefaultFolder.Name = "default"
 				result = append(result, ShowsFolder)
 				result = append(result, MoviesFolder)
+				result = append(result, MusicFolder)
 				result = append(result, DefaultFolder)
 				for i := range result {
 					item := &result[i]
 					item.Generated = "2006-01-02T15:04:05.000Z"
 				}
 			}
-		} else if f.opt.SharedFolder == "folders" && (dirID == "shows" || dirID == "movies" || dirID == "default") {
+		} else if f.opt.SharedFolder == "folders" && (dirID == "shows" || dirID == "movies" || dirID == "music" || dirID == "default") {
 			var artificialType []api.Item
 			if dirID == "shows" {
 				r, _ := regexp.Compile(f.opt.RegexShows) //(?i)(S[0-9]{2}|SEASON|COMPLETE)
@@ -662,6 +672,17 @@ func (f *Fs) listAll(ctx context.Context, dirID string, directoriesOnly bool, fi
 				result = artificialType
 			} else if dirID == "movies" {
 				r, _ := regexp.Compile(f.opt.RegexMovies) //`(?i)([0-9]{4} ?\.?)`
+				nr, _ := regexp.Compile(f.opt.RegexShows)
+				for _, torrent := range torrents {
+					match := r.MatchString(torrent.Name)
+					exclude := nr.MatchString(torrent.Name)
+					if match && !exclude {
+						artificialType = append(artificialType, torrent)
+					}
+				}
+				result = artificialType
+			} else if dirID == "music" {
+				r, _ := regexp.Compile(f.opt.RegexMusic) //`(?i)^(.*?).*(mp3|wav|flac|m4a)(.*)`
 				nr, _ := regexp.Compile(f.opt.RegexShows)
 				for _, torrent := range torrents {
 					match := r.MatchString(torrent.Name)
@@ -818,7 +839,7 @@ func (f *Fs) listAll(ctx context.Context, dirID string, directoriesOnly bool, fi
 			t, _ := time.Parse(layout, item.Ended)
 			item.CreatedAt = t.Unix()
 		}
-		if f.opt.SharedFolder == "folders" && (dirID == rootID || dirID == "shows" || dirID == "movies" || dirID == "default") {
+		if f.opt.SharedFolder == "folders" && (dirID == rootID || dirID == "shows" || dirID == "movies" || dirID == "music" || dirID == "default") {
 			item.Type = "folder"
 		} else {
 			item.Type = "file"
@@ -890,7 +911,7 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 // Creates from the parameters passed in a half finished Object which
 // must have setMetaData called on it
 //
-// Returns the object, leaf, directoryID and error
+// # Returns the object, leaf, directoryID and error
 //
 // Used to create new objects
 func (f *Fs) createObject(ctx context.Context, remote string, modTime time.Time, size int64) (o *Object, leaf string, directoryID string, err error) {
@@ -909,7 +930,7 @@ func (f *Fs) createObject(ctx context.Context, remote string, modTime time.Time,
 
 // Put the object
 //
-// Copy the reader in to the new object which is returned
+// # Copy the reader in to the new object which is returned
 //
 // The new object may have been created if an error is returned
 func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
@@ -927,9 +948,9 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 
 // PutUnchecked the object into the container
 //
-// This will produce an error if the object already exists
+// # This will produce an error if the object already exists
 //
-// Copy the reader in to the new object which is returned
+// # Copy the reader in to the new object which is returned
 //
 // The new object may have been created if an error is returned
 func (f *Fs) PutUnchecked(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
@@ -1013,9 +1034,9 @@ func (f *Fs) move(ctx context.Context, isFile bool, id, oldLeaf, newLeaf, oldDir
 
 // Move src to this remote using server-side move operations.
 //
-// This is stored with the remote path given
+// # This is stored with the remote path given
 //
-// It returns the destination Object and a possible error
+// # It returns the destination Object and a possible error
 //
 // Will only be called if src.Fs().Name() == f.Name()
 //
@@ -1171,7 +1192,6 @@ func (o *Object) readMetaData(ctx context.Context) (err error) {
 
 // ModTime returns the modification time of the object
 //
-//
 // It attempts to read the objects mtime and if that isn't present the
 // LastModified returned in the http headers
 func (o *Object) ModTime(ctx context.Context) time.Time {
@@ -1232,7 +1252,7 @@ func (o *Object) Open(ctx context.Context, options ...fs.OpenOption) (in io.Read
 
 // Update the object with the contents of the io.Reader, modTime and size
 //
-// If existing is set then it updates the object rather than creating a new one
+// # If existing is set then it updates the object rather than creating a new one
 //
 // The new object may have been created if an error is returned
 func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (err error) {
